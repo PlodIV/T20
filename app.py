@@ -6,7 +6,6 @@ from ta.momentum import RSIIndicator
 from ta.trend import MACD
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-from datetime import timedelta
 
 st.set_page_config(layout="wide")
 st.title("📈 ASX20 Daily & 7-Day Forecasting Tool")
@@ -22,6 +21,10 @@ ASX20 = {
 @st.cache_data
 def fetch_data(ticker):
     df = yf.download(ticker, start="2018-01-01", progress=False)
+    if df.empty:
+        raise ValueError(f"No data returned for {ticker}.")
+    if 'Close' not in df.columns:
+        raise ValueError(f"'Close' column missing for {ticker}.")
     df = df[['Close']].copy()
     df['Return'] = df['Close'].pct_change()
     df['7D_Return'] = df['Close'].pct_change(7)
@@ -31,7 +34,7 @@ def fetch_data(ticker):
     df['Lag2'] = df['Return'].shift(2)
     df['Target_1D'] = (df['Return'].shift(-1) > 0).astype(int)
     df['Target_7D'] = (df['7D_Return'].shift(-7) > 0).astype(int)
-    df.dropna(inplace=True)
+    df.dropna(subset=['RSI', 'MACD', 'Lag1', 'Lag2', 'Target_1D', 'Target_7D'], inplace=True)
     return df
 
 def train_and_predict(df):
@@ -54,14 +57,16 @@ def train_and_predict(df):
     acc1 = accuracy_score(y1_train, model1.predict(X_train))
     acc7 = accuracy_score(y7_train, model7.predict(X_train))
 
-    return pred1, acc1, pred7, acc7, df['Close'].iloc[-1]
+    last_date = df.index[-1].date()
+    return pred1, acc1, pred7, acc7, df['Close'].iloc[-1], last_date
 
 results = []
 for name, ticker in ASX20.items():
     try:
         df = fetch_data(ticker)
-        pred1, acc1, pred7, acc7, price = train_and_predict(df)
+        pred1, acc1, pred7, acc7, price, date = train_and_predict(df)
         results.append({
+            "Date": date.strftime("%Y-%m-%d"),
             "Ticker": name,
             "Price": round(price, 2),
             "1D Forecast": "📈 Up" if pred1 else "📉 Down",
@@ -70,9 +75,15 @@ for name, ticker in ASX20.items():
             "7D Accuracy": f"{acc7 * 100:.1f}%" if acc7 else "N/A"
         })
     except Exception as e:
+        st.warning(f"Error loading {name} ({ticker}): {e}")
         results.append({
-            "Ticker": name, "Price": "Error", "1D Forecast": "❌",
-            "1D Accuracy": "-", "7D Forecast": "❌", "7D Accuracy": "-"
+            "Date": "Error",
+            "Ticker": name,
+            "Price": "Error",
+            "1D Forecast": "❌",
+            "1D Accuracy": "-",
+            "7D Forecast": "❌",
+            "7D Accuracy": "-"
         })
 
 df_results = pd.DataFrame(results)
