@@ -47,7 +47,7 @@ def train_and_predict(df):
     y1_train = y_1d[:-7]
     y7_train = y_7d[:-7]
 
-    X_test = X.iloc[[-1]]
+    X_test = X.iloc[[-1]].values.reshape(1, -1)
     model1 = LogisticRegression(max_iter=1000).fit(X_train, y1_train)
     model7 = LogisticRegression(max_iter=1000).fit(X_train, y7_train)
 
